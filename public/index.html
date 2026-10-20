@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#064b7d" />
+  <title>컴판다 토토 AI사전 분석</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-head">
+    <div class="head-inner">
+      <div>
+        <h1>컴판다 토토 <em>AI사전 분석</em></h1>
+        <p>실시간 대진 · 홈 기준 유형분석 · 맞대결/동일표본 · AI 예측픽</p>
+      </div>
+      <div class="head-status"><span id="liveDot"></span><b id="liveText">연결 중</b><small id="updatedText">-</small></div>
+    </div>
+  </header>
+
+  <main class="page">
+    <nav class="product-tabs" aria-label="상품 메뉴">
+      <button class="active">프로토</button><button disabled title="별도 상품 연동 필요">토토</button><button disabled title="별도 데이터 연동 필요">해외배당</button>
+    </nav>
+
+    <section class="classic-panel">
+      <div class="sport-tabs" id="sportTabs">
+        <button data-sport="soccer" class="active">축구토토</button>
+        <button data-sport="baseball">야구토토</button>
+        <button data-sport="basketball">농구토토</button>
+        <button data-sport="volleyball">배구토토</button>
+        <button data-sport="golf">골프토토</button>
+        <button data-sport="ou">토토U/O</button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <select id="marketFilter" aria-label="게임 유형"><option value="all">전체유형</option><option value="win">승패</option><option value="ou">U/O</option></select>
+          <button class="arrow-btn" id="prevBtn">‹</button>
+          <select id="yearSelect"><option>조회 연도</option></select>
+          <select id="roundSelect"><option>회차 미확인</option></select>
+          <button class="arrow-btn" id="nextBtn">›</button>
+          <button id="refreshBtn" class="calc-btn">⟳ 실시간 갱신</button>
+        </div>
+        <div class="sale-time">AI 사전분석 · <span id="providerText">-</span></div>
+      </div>
+
+      <div class="notice-line" id="warningBar"></div>
+
+      <div class="layout">
+        <div class="schedule-area">
+          <div class="table-scroll">
+            <table class="games-table">
+              <thead>
+                <tr>
+                  <th class="num">번호</th><th>경기일시</th><th>리그</th><th>홈팀 vs 원정팀 / 선수</th><th>유형</th><th>AI 예상픽</th><th>신뢰도</th><th>상세보기</th>
+                </tr>
+              </thead>
+              <tbody id="gameRows"></tbody>
+            </table>
+          </div>
+          <div id="emptyState" class="empty hidden">조건에 맞는 대진이 없습니다.</div>
+
+          <div class="summary-strip">
+            <strong>조회 및 검증 상태</strong>
+            <span id="summaryText">대기 중...</span>
+          </div>
+          <p class="fineprint">※ AI 픽은 과거 성적·최근 흐름·맞대결·홈 이점·배당 신호를 조합한 사전 분석입니다. 적중을 보장하지 않으며 공식 결과와 발매정보는 운영사에서 최종 확인하십시오.</p>
+
+          <section class="analysis-box">
+            <h2>해당 회차 AI 분석글</h2>
+            <div id="analysisFeed"></div>
+          </section>
+        </div>
+
+        <aside class="ticket-card" id="ticketCard">
+          <div class="ticket-head">
+            <div><small id="ticketSportLabel">축구토토</small><h2>AI 추천 티켓</h2></div>
+            <span id="ticketCount">0경기</span>
+          </div>
+          <div id="ticketItems" class="ticket-items"></div>
+          <div class="ticket-empty" id="ticketEmpty">종목을 선택하면 신뢰도 상위 픽으로 티켓을 자동 구성합니다.</div>
+          <div class="ticket-metrics">
+            <div><span>조합 배당</span><b id="avgScore">-</b></div>
+            <div><span>가상 기준금액</span><b id="gradeMix">-</b></div>
+          </div>
+          <div class="ticket-actions">
+            <button id="rebuildTicket">AI 티켓 다시 만들기</button>
+            <button id="shareKakao" class="kakao">카카오톡 공유</button>
+          </div>
+          <button id="copyTicket" class="copy-btn">티켓 내용 복사</button>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-backdrop" data-close></div>
+    <section class="drawer-panel">
+      <button class="drawer-close" data-close>×</button>
+      <div id="detailBody"></div>
+    </section>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

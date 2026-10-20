@@ -6,6 +6,8 @@ node_modules/
 .sites-runtime/
 .wrangler/
 coverage/
+dist/
+data/*
 *.log
 *.pem
 *.key

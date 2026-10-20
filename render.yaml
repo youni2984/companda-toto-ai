@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: companda-live-sports
+    env: node
+    plan: free
+    buildCommand: ""
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: CACHE_TTL_MS
+        value: 1800000
