@@ -4,3 +4,67 @@
 @media(max-width:640px){.page{padding:6px}.classic-panel{padding:0 5px 8px}.head-inner{align-items:flex-start}.site-head p{font-size:10px}.head-status b{font-size:10px}.sport-tabs button{padding:9px 7px;font-size:11px}.sport-tabs button+button:before{margin-right:7px}.toolbar{align-items:flex-start;flex-direction:column}.sale-time{align-self:flex-end}.toolbar select,.arrow-btn,.calc-btn{height:27px}.summary-strip{grid-template-columns:120px 1fr}.detail-grid{grid-template-columns:1fr}.ticket-actions{grid-template-columns:1fr}.games-table{min-width:820px}.product-tabs{height:31px}.product-tabs button{font-size:11px}}
 
 button:disabled{opacity:.5;cursor:not-allowed}.scorecenter{font-weight:900;font-style:italic;color:#111!important}.ticket-items{background:#fff;color:#111;border-right:18px solid #f4b284;padding:12px}.receipt{width:100%;font-size:12px;border-collapse:collapse;margin:14px 0;border-block:2px dashed #333}.receipt td,.receipt th{padding:8px 2px;text-align:left}.receipt td:last-child{text-align:right}#liveDot.demo{background:#eaa833}
+
+/* Mobile layout: all match information fits the viewport without table panning. */
+html{scroll-behavior:smooth;scroll-padding-top:110px;-webkit-text-size-adjust:100%}
+button,a,select{touch-action:manipulation}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid #e58713;outline-offset:3px}
+.mobile-nav{display:none}
+.schedule-area,.toolbar-left,.head-inner>div,.ticket-card{min-width:0}
+@media(max-width:640px){
+  .head-inner{display:block;padding:16px max(14px,env(safe-area-inset-left)) 12px}
+  .site-head h1{font-size:clamp(19px,5.5vw,24px);line-height:1.35;letter-spacing:-.7px;overflow-wrap:anywhere}
+  .site-head p{font-size:12px;line-height:1.6;margin-top:6px}
+  .head-status{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;text-align:left}
+  .head-status b,.head-status small{font-size:12px}
+  .page{padding:10px max(10px,env(safe-area-inset-left)) calc(90px + env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-right))}
+  .product-tabs{height:auto;margin-bottom:10px}
+  .product-tabs button{min-height:44px;font-size:14px}
+  .classic-panel{padding:0 10px 14px;border-radius:10px}
+  .sport-tabs{position:sticky;top:0;z-index:10;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:8px 0;background:#fff;overflow:visible}
+  .sport-tabs button{min-height:44px;padding:9px 4px;border:1px solid #d5dfe6;border-radius:7px;font-size:14px;color:#425968}
+  .sport-tabs button+button:before{content:none}
+  .sport-tabs button.active{background:var(--blue);color:#fff;text-decoration:none;border-color:var(--blue)}
+  .toolbar{display:block;padding:10px 0}
+  .toolbar-left{display:grid;width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .toolbar select,.arrow-btn,.calc-btn{width:100%;min-width:0;height:44px;font-size:16px;border-radius:6px}
+  #marketFilter{grid-column:1;grid-row:1}#yearSelect{grid-column:2;grid-row:1}#roundSelect{grid-column:3;grid-row:1}
+  #prevBtn{grid-column:1;grid-row:2}#nextBtn{grid-column:2;grid-row:2}#refreshBtn{grid-column:3;grid-row:2;font-size:12px}
+  .sale-time{margin-top:9px;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+  .notice-line{font-size:13px;line-height:1.7;padding:10px;border-radius:7px;overflow-wrap:anywhere}
+  .table-scroll{overflow:visible;border:0}
+  .games-table{display:block;min-width:0;width:100%;font-size:14px}
+  .games-table thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .games-table tbody{display:grid;gap:10px;width:100%}
+  .games-table tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'league number' 'time time' 'match match' 'market grade' 'pick detail';gap:5px 8px;border:1px solid #cddce5;border-radius:10px;padding:12px;background:#fff;box-shadow:0 2px 5px #143b5010}
+  .games-table tbody tr.picked-row{border-color:#0079b7;box-shadow:0 0 0 1px #0079b7}
+  .games-table tbody tr td,.games-table tbody tr:nth-child(even) td,.games-table tbody tr.picked-row td{display:block;padding:0;border:0;background:transparent;text-align:left;min-width:0}
+  .games-table td:nth-child(1){grid-area:number;color:#516976;font-size:12px;text-align:right}.games-table td:nth-child(1):before{content:'경기 '}
+  .games-table td:nth-child(2){grid-area:time;color:#5d717d;white-space:normal;font-size:12px;line-height:1.6}
+  .games-table td:nth-child(3){grid-area:league;color:var(--blue);font-weight:700}
+  .games-table td:nth-child(4){grid-area:match;white-space:normal;font-size:16px;line-height:1.7;padding:3px 0;overflow-wrap:anywhere}
+  .games-table td:nth-child(5){grid-area:market;font-size:12px;color:#5c707d;align-self:center}.games-table td:nth-child(5):before{content:'시장 · '}
+  .games-table td:nth-child(6){grid-area:pick;margin-top:4px}
+  .games-table td:nth-child(7){grid-area:grade;text-align:right;font-size:12px;align-self:center}
+  .games-table td:nth-child(8){grid-area:detail;align-self:end}
+  .pick-btn{display:block;width:100%;min-height:44px;font-size:13px;padding:10px;border-radius:7px;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+  .pick-btn:disabled{opacity:1;background:#edf2f5;color:#536875;font-weight:500}
+  .detail-btn{width:44px;height:44px;font-size:23px;border-radius:7px;line-height:1}
+  .summary-strip{grid-template-columns:1fr;font-size:13px;border-radius:7px;overflow:hidden;margin-top:14px}.summary-strip strong{text-align:left;padding:10px}.summary-strip span{line-height:1.8;padding:10px;overflow-wrap:anywhere}
+  .fineprint{font-size:12px;line-height:1.7;margin:10px 0}
+  .analysis-box{border-radius:8px;overflow:hidden}.analysis-box h2{font-size:14px;padding:13px}.feed-row{min-height:48px;font-size:13px;line-height:1.6;padding:10px}.feed-row b{overflow-wrap:anywhere}
+  .ticket-card{scroll-margin-top:110px;border-radius:10px;overflow:hidden}.ticket-head{padding:14px}.ticket-head h2{font-size:18px}.ticket-head small,.ticket-head>span{font-size:12px}
+  .ticket-items{max-height:none;padding:12px;border-right-width:10px;overflow-wrap:anywhere}.ticket-items:empty{display:none}.scorecenter{font-size:clamp(16px,5vw,22px)}
+  .receipt{font-size:12px;table-layout:fixed}.receipt th,.receipt td{overflow-wrap:anywhere;vertical-align:top;padding:8px 2px}.receipt th:first-child{width:14%}.receipt th:last-child{width:16%}
+  .ticket-items>p{font-size:13px;line-height:1.6}.ticket-items>button{min-height:44px;border:1px solid #cdd6db;background:#f4f7f9;color:#304c5b;border-radius:6px;padding:8px;margin:3px}
+  .ticket-empty{font-size:14px;line-height:1.7;padding:24px 14px}.ticket-metrics span{font-size:12px}.ticket-metrics b{font-size:15px}
+  .ticket-actions{grid-template-columns:1fr;gap:8px}.ticket-actions button,.copy-btn{min-height:46px;font-size:14px;border-radius:7px}
+  .drawer-panel{width:100%;height:100%;height:100dvh;padding:calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .drawer-close{position:sticky;top:0;display:block;margin-left:auto;width:44px;height:44px;background:#fff;border:1px solid #d5dfe5;border-radius:50%;z-index:2;right:auto;font-size:28px}
+  .drawer-panel h2{font-size:21px;line-height:1.5}.detail-kicker,.detail-time,.metric,.reason-box ul{font-size:13px;line-height:1.7}.detail-grid h3,.reason-box h3{font-size:14px}.hero-pick strong{font-size:20px;overflow-wrap:anywhere}.detail-actions button{min-height:48px;font-size:15px}
+  .mobile-nav{display:grid;position:fixed;bottom:0;left:0;right:0;z-index:30;grid-template-columns:1fr 1fr;gap:8px;padding:8px max(12px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:#ffffffef;border-top:1px solid #c9d9e3;box-shadow:0 -3px 15px #143b5012}
+  .mobile-nav a{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700;color:var(--blue);background:#edf4f8}.mobile-nav a:last-child{background:var(--blue);color:#fff}.mobile-nav span{background:#ffffff25;border-radius:12px;padding:2px 7px}
+  body:has(.drawer.open) .mobile-nav{display:none}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom));width:max-content;max-width:calc(100vw - 28px);font-size:13px;line-height:1.6;padding:12px;border-radius:8px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.drawer-panel,.toast{transition:none}}
