@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+.sites-runtime/
+.wrangler/
+coverage/
+*.log
+*.pem
+*.key
+.DS_Store
