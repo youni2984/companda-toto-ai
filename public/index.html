@@ -36,10 +36,10 @@
       <div class="toolbar">
         <div class="toolbar-left">
           <select id="marketFilter" aria-label="게임 유형"><option value="all">전체유형</option><option value="win">승패</option><option value="ou">U/O</option></select>
-          <button class="arrow-btn" id="prevBtn">‹</button>
-          <select id="yearSelect"><option>조회 연도</option></select>
-          <select id="roundSelect"><option>회차 미확인</option></select>
-          <button class="arrow-btn" id="nextBtn">›</button>
+          <button class="arrow-btn" id="prevBtn" aria-label="이전 회차">‹</button>
+          <select id="yearSelect" aria-label="조회 연도"><option>조회 연도</option></select>
+          <select id="roundSelect" aria-label="조회 회차"><option>회차 미확인</option></select>
+          <button class="arrow-btn" id="nextBtn" aria-label="다음 회차">›</button>
           <button id="refreshBtn" class="calc-btn">⟳ 실시간 갱신</button>
         </div>
         <div class="sale-time">AI 사전분석 · <span id="providerText">-</span></div>
@@ -48,7 +48,7 @@
       <div class="notice-line" id="warningBar"></div>
 
       <div class="layout">
-        <div class="schedule-area">
+        <div class="schedule-area" id="scheduleArea">
           <div class="table-scroll">
             <table class="games-table">
               <thead>
@@ -97,11 +97,12 @@
   <div class="drawer" id="drawer" aria-hidden="true">
     <div class="drawer-backdrop" data-close></div>
     <section class="drawer-panel">
-      <button class="drawer-close" data-close>×</button>
+      <button class="drawer-close" data-close aria-label="상세보기 닫기">×</button>
       <div id="detailBody"></div>
     </section>
   </div>
-  <div class="toast" id="toast"></div>
+  <nav class="mobile-nav" aria-label="화면 바로가기"><a href="#scheduleArea">대진표</a><a href="#ticketCard">티켓 보기 <span id="mobileTicketCount">0</span></a></nav>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js"></script>
   <script src="/app.js"></script>
