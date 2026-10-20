@@ -40,7 +40,7 @@ function renderRows(){
       <td class="center">${esc(g.market||'승패')}</td>
       <td class="center"><button class="pick-btn ${selected?'selected':''}" ${g.validation?.eligible?'':'disabled'} data-pick="${esc(g.id)}">${esc(g.validation?.eligible ? p.pickLabel||pickText(p.pick) : g.validation?.reason || '보류')}</button></td>
       <td>${g.validation?.eligible ? gradeBadge(p.grade)+confidence(p.score) : '<span>보류</span>'}</td>
-      <td class="center"><button class="detail-btn" data-id="${esc(g.id)}">＋</button></td>
+      <td class="center"><button class="detail-btn" aria-label="${esc(g.home)} 대 ${esc(g.away)} 상세보기" data-id="${esc(g.id)}">＋</button></td>
     </tr>`;
   }).join('');
   $$('[data-id]').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
@@ -87,7 +87,7 @@ function toggleTicket(id){
 function ticketGames(){return state.ticket.map(x=>findGame(x.id)).filter(g=>g?.validation?.eligible && Date.parse(g.startAt)>Date.now() && Date.parse(g.sale?.deadline)>Date.now());}
 function renderTicket(){
   const games=ticketGames();
-  $('#ticketSportLabel').textContent=sportNames[state.sport]; $('#ticketCount').textContent=`${games.length}경기`;
+  $('#ticketSportLabel').textContent=sportNames[state.sport]; $('#ticketCount').textContent=`${games.length}경기`; $('#mobileTicketCount').textContent=String(games.length);
   $('#ticketEmpty').classList.toggle('hidden',games.length>=2);
   $('#ticketEmpty').textContent='검증 통과 경기가 2개 이상일 때 참고 티켓을 구성합니다.';
   const odds=games.reduce((s,g)=>s*g.validation.odds,1);
