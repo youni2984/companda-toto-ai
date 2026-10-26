@@ -12,7 +12,7 @@
     <div class="head-inner">
       <div>
         <h1>컴판다 토토 <em>AI사전 분석</em></h1>
-        <p>실시간 대진 · 홈 기준 유형분석 · 맞대결/동일표본 · AI 예측픽</p>
+        <p>축구 · 야구 · 농구 · 배구 / 경기 임박순 · 배당 수신 대기 · 제공픽 이력 보존</p>
       </div>
       <div class="head-status"><span id="liveDot"></span><b id="liveText">연결 중</b><small id="updatedText">-</small></div>
     </div>
@@ -29,7 +29,6 @@
         <button data-sport="baseball">야구토토</button>
         <button data-sport="basketball">농구토토</button>
         <button data-sport="volleyball">배구토토</button>
-        <button data-sport="golf">골프토토</button>
         <button data-sport="ou">토토U/O</button>
       </div>
 
@@ -53,7 +52,7 @@
             <table class="games-table">
               <thead>
                 <tr>
-                  <th class="num">번호</th><th>경기일시</th><th>리그</th><th>홈팀 vs 원정팀 / 선수</th><th>유형</th><th>AI 예상픽</th><th>신뢰도</th><th>상세보기</th>
+                  <th class="num">번호</th><th>경기일시</th><th>리그</th><th>홈팀 vs 원정팀</th><th>유형</th><th>AI 예상픽</th><th>검증상태</th><th>상세보기</th>
                 </tr>
               </thead>
               <tbody id="gameRows"></tbody>
@@ -65,7 +64,7 @@
             <strong>조회 및 검증 상태</strong>
             <span id="summaryText">대기 중...</span>
           </div>
-          <p class="fineprint">※ AI 픽은 과거 성적·최근 흐름·맞대결·홈 이점·배당 신호를 조합한 사전 분석입니다. 적중을 보장하지 않으며 공식 결과와 발매정보는 운영사에서 최종 확인하십시오.</p>
+          <p class="fineprint">※ 배당이 없거나 기준값이 미수신된 경기는 삭제하지 않고 수신 대기로 보류합니다. 예측픽은 과거 성적·최근 흐름·홈/원정·맞대결과 수신된 당일 정보를 조합한 참고 분석이며 적중을 보장하지 않습니다.</p>
 
           <section class="analysis-box">
             <h2>해당 회차 AI 분석글</h2>
@@ -79,7 +78,7 @@
             <span id="ticketCount">0경기</span>
           </div>
           <div id="ticketItems" class="ticket-items"></div>
-          <div class="ticket-empty" id="ticketEmpty">종목을 선택하면 신뢰도 상위 픽으로 티켓을 자동 구성합니다.</div>
+          <div class="ticket-empty" id="ticketEmpty">검증 통과 경기가 2개 이상일 때 참고 티켓을 구성합니다.</div>
           <div class="ticket-metrics">
             <div><span>조합 배당</span><b id="avgScore">-</b></div>
             <div><span>가상 기준금액</span><b id="gradeMix">-</b></div>
