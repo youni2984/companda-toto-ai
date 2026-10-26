@@ -4,6 +4,10 @@ const http = require('http');
 const rosterModule = require('./lib/roster-monitor');
 const { validateMatchRosters } = require('./lib/competition-rules');
 
+function sameName(a,b) {
+  return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
+}
+
 // server.js가 roster monitor를 만들기 전에 규정 완전성 검사를 삽입한다.
 const originalCreateRosterMonitor = rosterModule.createRosterMonitor;
 rosterModule.createRosterMonitor = function createRosterMonitorWithRules(options = {}) {
@@ -12,13 +16,10 @@ rosterModule.createRosterMonitor = function createRosterMonitorWithRules(options
 
   monitor.gameImpact = function regulatedGameImpact(homeName, awayName, sport = '', league = '') {
     const base = originalGameImpact(homeName, awayName, sport, league);
-    const homeTeam = monitor.getTeam(homeName);
-    const awayTeam = monitor.getTeam(awayName);
-    const suppliedRules = {
-      home: homeTeam?.leagueRule || homeTeam?.rules || {},
-      away: awayTeam?.leagueRule || awayTeam?.rules || {}
-    };
-    const ruleCheck = validateMatchRosters(homeTeam, awayTeam, suppliedRules);
+    const scoped = monitor.getState({ sport, league }).teams || [];
+    const homeTeam = scoped.find(t => sameName(t.name, homeName)) || null;
+    const awayTeam = scoped.find(t => sameName(t.name, awayName)) || null;
+    const ruleCheck = validateMatchRosters(homeTeam, awayTeam, {});
     return {
       ...base,
       ruleCheck,
