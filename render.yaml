@@ -10,3 +10,19 @@ services:
         value: 20
       - key: CACHE_TTL_MS
         value: 1800000
+
+  - type: web
+    name: companda-roster-monitor
+    env: node
+    plan: free
+    buildCommand: ""
+    startCommand: npm run start:roster
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: ROSTER_SEASON
+        value: 2026
+      - key: ROSTER_REFRESH_MS
+        value: 300000
+      - key: ROSTER_STORAGE_PATH
+        value: ./data/roster-2026.json
