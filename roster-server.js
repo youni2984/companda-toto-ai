@@ -40,8 +40,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/roster/game-impact' && req.method === 'GET') {
     const home = url.searchParams.get('home') || '';
     const away = url.searchParams.get('away') || '';
+    const sport = url.searchParams.get('sport') || '';
+    const league = url.searchParams.get('league') || '';
     if (!home || !away) return sendJson(res, 400, { error:'home, away 팀명이 필요합니다.' });
-    return sendJson(res, 200, monitor.gameImpact(home, away));
+    return sendJson(res, 200, monitor.gameImpact(home, away, sport, league));
   }
   return sendJson(res, 404, { error:'API 경로를 찾을 수 없습니다.' });
 });
