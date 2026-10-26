@@ -1,12 +1,13 @@
 {
   "name": "companda-live-sports",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "접속 시 최신 회차/경기/배당/선수정보를 동기화해 분석 결과를 제공하는 반응형 스포츠 분석 사이트",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node app.js",
+    "dev": "node app.js",
+    "start:raw": "node server.js",
     "start:roster": "node roster-server.js",
     "test": "node --test test/*.test.js",
     "build:sites": "node scripts/build-sites.mjs"
