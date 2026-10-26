@@ -8,7 +8,6 @@ function sameName(a,b) {
   return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
 }
 
-// server.js가 roster monitor를 만들기 전에 규정 완전성 검사를 삽입한다.
 const originalCreateRosterMonitor = rosterModule.createRosterMonitor;
 rosterModule.createRosterMonitor = function createRosterMonitorWithRules(options = {}) {
   const monitor = originalCreateRosterMonitor(options);
@@ -19,7 +18,11 @@ rosterModule.createRosterMonitor = function createRosterMonitorWithRules(options
     const scoped = monitor.getState({ sport, league }).teams || [];
     const homeTeam = scoped.find(t => sameName(t.name, homeName)) || null;
     const awayTeam = scoped.find(t => sameName(t.name, awayName)) || null;
-    const ruleCheck = validateMatchRosters(homeTeam, awayTeam, {});
+    const suppliedRules = {
+      home: homeTeam?.leagueRule || homeTeam?.rules || {},
+      away: awayTeam?.leagueRule || awayTeam?.rules || {}
+    };
+    const ruleCheck = validateMatchRosters(homeTeam, awayTeam, suppliedRules);
     return {
       ...base,
       ruleCheck,
@@ -54,9 +57,9 @@ function postRefresh(reason='roster-update') {
   });
 }
 
-server.listen(PORT, () => {
-  console.log(`COMPANDA TOTO AI regulated: http://localhost:${PORT}`);
-  // 선수/결장/이적/징계 정보가 갱신되는 주기와 맞춰 전체 대진을 재분석한다.
-  const timer=setInterval(() => postRefresh('automatic-roster-reanalysis'), REANALYZE_MS);
+server.listen(PORT, async () => {
+  console.log(`COMPANDA TOTO AI integrated: http://localhost:${PORT}`);
+  await postRefresh('startup-integrated-reanalysis');
+  const timer = setInterval(() => postRefresh('automatic-roster-reanalysis'), REANALYZE_MS);
   if (typeof timer.unref === 'function') timer.unref();
 });
