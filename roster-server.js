@@ -6,6 +6,29 @@ const { createRosterMonitor } = require('./lib/roster-monitor');
 
 const PORT = Number(process.env.ROSTER_PORT || process.env.PORT || 3100);
 const monitor = createRosterMonitor();
+const ALLOWED_SPORTS = new Set(['soccer', 'baseball', 'basketball', 'volleyball']);
+
+function normalizeSport(value = '') {
+  const s = String(value || '').trim().toLowerCase();
+  if (['soccer', 'football', '축구'].includes(s)) return 'soccer';
+  if (['baseball', '야구'].includes(s)) return 'baseball';
+  if (['basketball', '농구'].includes(s)) return 'basketball';
+  if (['volleyball', '배구'].includes(s)) return 'volleyball';
+  return s;
+}
+
+function isAllowedSport(value = '') {
+  const sport = normalizeSport(value);
+  return !sport || ALLOWED_SPORTS.has(sport);
+}
+
+function filterAllowedTeams(state = {}) {
+  const teams = Array.isArray(state.teams)
+    ? state.teams.filter(team => ALLOWED_SPORTS.has(normalizeSport(team.sport)))
+    : [];
+  return { ...state, teams };
+}
+
 monitor.start();
 
 function sendJson(res, status, data) {
@@ -22,20 +45,50 @@ function sendJson(res, status, data) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname === '/api/roster/health' && req.method === 'GET') {
-    const s = monitor.getState();
-    return sendJson(res, 200, { ok:true, season:s.season, source:s.source, fetchedAt:s.fetchedAt, stale:s.stale, teams:s.teams.length, warning:s.warning });
+    const s = filterAllowedTeams(monitor.getState());
+    return sendJson(res, 200, {
+      ok:true,
+      season:s.season,
+      source:s.source,
+      fetchedAt:s.fetchedAt,
+      stale:s.stale,
+      teams:s.teams.length,
+      sports:['soccer','baseball','basketball','volleyball'],
+      warning:s.warning
+    });
   }
   if (url.pathname === '/api/roster/refresh' && req.method === 'POST') {
-    const s = await monitor.refresh('manual');
-    return sendJson(res, 200, { season:s.season, source:s.source, fetchedAt:s.fetchedAt, stale:s.stale, teams:s.teams.length, warning:s.warning });
+    const s = filterAllowedTeams(await monitor.refresh('manual'));
+    return sendJson(res, 200, {
+      season:s.season,
+      source:s.source,
+      fetchedAt:s.fetchedAt,
+      stale:s.stale,
+      teams:s.teams.length,
+      sports:['soccer','baseball','basketball','volleyball'],
+      warning:s.warning
+    });
   }
   if (url.pathname === '/api/roster/teams' && req.method === 'GET') {
-    return sendJson(res, 200, monitor.getState({ sport:url.searchParams.get('sport'), league:url.searchParams.get('league'), country:url.searchParams.get('country'), q:url.searchParams.get('q') }));
+    const requestedSport = url.searchParams.get('sport') || '';
+    if (!isAllowedSport(requestedSport)) {
+      return sendJson(res, 400, { error:'지원 종목은 축구·야구·농구·배구만 가능합니다.' });
+    }
+    const state = monitor.getState({
+      sport:requestedSport,
+      league:url.searchParams.get('league'),
+      country:url.searchParams.get('country'),
+      q:url.searchParams.get('q')
+    });
+    return sendJson(res, 200, filterAllowedTeams(state));
   }
   if (url.pathname.startsWith('/api/roster/team/') && req.method === 'GET') {
     const id = decodeURIComponent(url.pathname.slice('/api/roster/team/'.length));
     const team = monitor.getTeam(id);
-    return team ? sendJson(res, 200, team) : sendJson(res, 404, { error:'팀을 찾을 수 없습니다.' });
+    if (!team || !ALLOWED_SPORTS.has(normalizeSport(team.sport))) {
+      return sendJson(res, 404, { error:'지원 종목의 팀을 찾을 수 없습니다.' });
+    }
+    return sendJson(res, 200, team);
   }
   if (url.pathname === '/api/roster/game-impact' && req.method === 'GET') {
     const home = url.searchParams.get('home') || '';
@@ -43,11 +96,14 @@ const server = http.createServer(async (req, res) => {
     const sport = url.searchParams.get('sport') || '';
     const league = url.searchParams.get('league') || '';
     if (!home || !away) return sendJson(res, 400, { error:'home, away 팀명이 필요합니다.' });
-    return sendJson(res, 200, monitor.gameImpact(home, away, sport, league));
+    if (!isAllowedSport(sport)) {
+      return sendJson(res, 400, { error:'지원 종목은 축구·야구·농구·배구만 가능합니다.' });
+    }
+    return sendJson(res, 200, monitor.gameImpact(home, away, normalizeSport(sport), league));
   }
   return sendJson(res, 404, { error:'API 경로를 찾을 수 없습니다.' });
 });
 
 if (require.main === module) server.listen(PORT, () => console.log(`COMPANDA ROSTER MONITOR: http://localhost:${PORT}`));
 
-module.exports = { server, monitor };
+module.exports = { server, monitor, ALLOWED_SPORTS };
