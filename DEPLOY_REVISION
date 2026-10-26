@@ -1,0 +1,6 @@
+2026-10-26
+companda-live-sports integrated final setup
+- regulated app.js startup
+- roster/transfer/absence/discipline monitoring
+- sport/league roster completeness gate
+- automatic reanalysis every 5 minutes
