@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const { createRosterMonitor } = require('./lib/roster-monitor');
 
 const PORT = Number(process.env.PORT || 3000);
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 10 * 60 * 1000);
@@ -10,17 +11,21 @@ const LIVE_PROVIDER_TOKEN = (process.env.LIVE_PROVIDER_TOKEN || '').trim();
 const KAKAO_JS_KEY = (process.env.KAKAO_JS_KEY || '').trim();
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
+const rosterMonitor = createRosterMonitor();
+rosterMonitor.start();
+
 const sseClients = new Set();
 let refreshPromise = null;
 let cache = { fetchedAt: 0, source: 'DEMO', warning: '', meta: {}, games: [] };
 
-const MODEL_VERSION = 'COMPANDA-PREMATCH-2.0';
+const MODEL_VERSION = 'COMPANDA-PREMATCH-2.1';
 const MODEL_WEIGHTS = {
-  season: 0.28,
-  recent: 0.28,
-  h2h: 0.16,
-  home: 0.16,
-  market: 0.12
+  season: 0.24,
+  recent: 0.24,
+  h2h: 0.14,
+  home: 0.13,
+  market: 0.10,
+  roster: 0.15
 };
 
 function parseKst(value) {
@@ -45,6 +50,7 @@ function validateRecommendation(g, context, now = Date.now()) {
   const checked=Date.parse(g.evidence?.checkedAt);
   if (g.evidence?.complete !== true || !Array.isArray(g.evidence?.items) || !g.evidence.items.length || g.evidence.items.some(i=>i.ok!==true) || !g.lineup?.received) return no('재수집대기');
   if (!Number.isFinite(checked) || checked>now+60000 || now-checked>CACHE_TTL_MS) return no('재검증필요');
+  if (!g.rosterCheck?.complete || g.rosterCheck?.stale) return no('당일 선수/결장/퇴장 대조 필요');
   if (Math.min(g.recent?.home?.length||0,g.recent?.away?.length||0) < 5) return no('최근 동일표본 부족');
   const p=g.prediction?.pick;
   if (!['HOME','DRAW','AWAY','OVER','UNDER'].includes(p)) return no('예상픽 미확인');
@@ -108,7 +114,9 @@ function analyzeGame(g) {
   const h2hEdge = h2hSample >= 5 ? (num(g.h2h?.homeWins) - num(g.h2h?.awayWins)) / Math.max(1, h2hSample) : 0;
   const marketEdge = impliedHomeEdge(g.odds);
   const homeAdv = sport === 'golf' ? 0 : sport === 'baseball' ? 0.07 : sport === 'basketball' ? 0.09 : sport === 'volleyball' ? 0.08 : 0.075;
-  const rawEdge = seasonEdge * MODEL_WEIGHTS.season + recentEdge * MODEL_WEIGHTS.recent + h2hEdge * MODEL_WEIGHTS.h2h + homeAdv * MODEL_WEIGHTS.home + marketEdge * MODEL_WEIGHTS.market;
+  const rosterCheck = g.rosterCheck || rosterMonitor.gameImpact(g.home, g.away, sport, g.league);
+  const rosterEdge = rosterCheck?.complete && !rosterCheck?.stale ? num(rosterCheck.edge, 0) : 0;
+  const rawEdge = seasonEdge * MODEL_WEIGHTS.season + recentEdge * MODEL_WEIGHTS.recent + h2hEdge * MODEL_WEIGHTS.h2h + homeAdv * MODEL_WEIGHTS.home + marketEdge * MODEL_WEIGHTS.market + rosterEdge * MODEL_WEIGHTS.roster;
 
   const homeFor = num(home.avgFor, sport === 'basketball' ? 108 : sport === 'baseball' ? 4.4 : sport === 'volleyball' ? 91 : 1.45);
   const homeAg = num(home.avgAgainst, sport === 'basketball' ? 106 : sport === 'baseball' ? 4.1 : sport === 'volleyball' ? 89 : 1.25);
@@ -121,12 +129,14 @@ function analyzeGame(g) {
   let pick, pickCode, type, score;
 
   if (isOU && line) {
-    const diff = totalEstimate - line;
+    const rosterTotalPenalty = num(rosterCheck?.home?.absencePenalty) + num(rosterCheck?.away?.absencePenalty);
+    const adjustedTotal = totalEstimate - clamp(rosterTotalPenalty * (sport === 'basketball' ? 0.35 : sport === 'volleyball' ? 0.18 : sport === 'baseball' ? 0.06 : 0.025), 0, sport === 'basketball' ? 8 : 1.5);
+    const diff = adjustedTotal - line;
     pickCode = diff >= 0 ? 'OVER' : 'UNDER';
     pick = pickCode === 'OVER' ? '오버' : '언더';
     type = `기준점 ${line} ${pick}`;
     const scale = sport === 'basketball' ? 0.55 : sport === 'volleyball' ? 0.45 : sport === 'baseball' ? 3.1 : 4.2;
-    score = clamp(Math.round(58 + Math.abs(diff) * scale + Math.abs(recentEdge) * 12), 52, 94);
+    score = clamp(Math.round(58 + Math.abs(diff) * scale + Math.abs(recentEdge) * 12 + Math.abs(rosterEdge) * 20), 52, 94);
   } else {
     if (sport === 'soccer' && Math.abs(rawEdge) < 0.055) {
       pickCode = 'DRAW'; pick = '무'; type = '균형형 무승부';
@@ -135,7 +145,7 @@ function analyzeGame(g) {
     } else {
       pickCode = 'AWAY'; pick = sport === 'golf' ? '선수2' : '원정승'; type = '원정 역배/우세';
     }
-    score = clamp(Math.round(59 + Math.abs(rawEdge) * 115 + Math.abs(recentEdge) * 10 + (h2hSample >= 5 ? 3 : 0)), 51, 95);
+    score = clamp(Math.round(59 + Math.abs(rawEdge) * 115 + Math.abs(recentEdge) * 10 + Math.abs(rosterEdge) * 20 + (h2hSample >= 5 ? 3 : 0)), 51, 95);
   }
 
   const grade = score >= 82 ? 'A' : score >= 70 ? 'B' : 'C';
@@ -147,6 +157,10 @@ function analyzeGame(g) {
     `시즌 밸런스 ${seasonEdge >= 0 ? '홈' : '원정'} ${Math.abs(seasonEdge * 100).toFixed(1)}%p`,
     recentLabel(recentEdge),
     h2hSample >= 5 ? `맞대결 ${h2hSample}경기 표본 반영` : '맞대결 부족 → 양 팀 최근 동일표본으로 대체',
+    rosterCheck?.complete && !rosterCheck?.stale
+      ? `당일 선수대조 반영: 홈 결장 ${rosterCheck.home?.unavailableCount||0}명(주전 ${rosterCheck.home?.starterUnavailable||0}, 퇴장/징계 ${(rosterCheck.home?.ejectionCount||0)+(rosterCheck.home?.suspensionCount||0)}), 원정 결장 ${rosterCheck.away?.unavailableCount||0}명(주전 ${rosterCheck.away?.starterUnavailable||0}, 퇴장/징계 ${(rosterCheck.away?.ejectionCount||0)+(rosterCheck.away?.suspensionCount||0)})`
+      : '당일 선수/결장/퇴장 대조 미완료',
+    rosterCheck?.complete ? `개인성적 지수 홈 ${rosterCheck.home?.individualPerformance ?? '-'} / 원정 ${rosterCheck.away?.individualPerformance ?? '-'}` : '개인성적 대조 대기',
     line ? `예상 합계 ${totalEstimate.toFixed(1)} / 기준점 ${line}` : '승패형 예측'
   ];
 
@@ -164,8 +178,10 @@ function analyzeGame(g) {
       recent: Number(recentEdge.toFixed(3)),
       h2h: Number(h2hEdge.toFixed(3)),
       home: homeAdv,
-      market: Number(marketEdge.toFixed(3))
+      market: Number(marketEdge.toFixed(3)),
+      roster: Number(rosterEdge.toFixed(3))
     },
+    rosterCheck,
     notes
   };
 }
@@ -224,6 +240,7 @@ function makeDemoGames() {
       updatedAt: isoNow(),
       demo: true
     };
+    game.rosterCheck = rosterMonitor.gameImpact(home, away, sport, league);
     game.prediction = analyzeGame(game);
     game.analysisNotes = game.prediction.notes;
     return game;
@@ -241,13 +258,14 @@ function buildMeta(games, source = 'DEMO') {
     analyzedGames: games.length,
     grades,
     playerInfo: { requested: games.length, received: games.filter(g=>g.lineup?.received).length, lineupMatches: games.filter(g=>g.lineup?.received).length },
+    rosterInfo: { checked:games.filter(g=>g.rosterCheck?.complete).length, stale:games.filter(g=>g.rosterCheck?.stale).length },
     refreshMinutes: Math.round(CACHE_TTL_MS / 60000),
     preparedAt: isoNow(),
     model: {
       version: MODEL_VERSION,
       trainedSamples: null,
       referenceHitRate: null,
-      note: '학습 모델이 아닌 통계 기반 보조지수입니다. 검증 성적은 미확인입니다.'
+      note: '통계 기반 보조지수이며 당일 선수 결장·퇴장/징계·개인성적을 예상픽 전에 대조합니다.'
     }
   };
 }
@@ -286,7 +304,8 @@ function normalizeProviderPayload(raw) {
       backtest: g.backtest ?? null,
       demo: false
     };
-    game.prediction = g.prediction && g.prediction.score ? g.prediction : analyzeGame(game);
+    game.rosterCheck = g.rosterCheck ?? rosterMonitor.gameImpact(game.home, game.away, game.sport, game.league);
+    game.prediction = g.prediction && g.prediction.score ? { ...g.prediction, rosterCheck:game.rosterCheck } : analyzeGame(game);
     game.analysisNotes = g.analysisNotes ?? g.reasons ?? game.prediction.notes ?? [];
     return game;
   });
@@ -319,6 +338,7 @@ async function refreshData(reason='manual') {
   refreshPromise = (async()=>{
     broadcast('status',{refreshing:true,reason,startedAt:isoNow()});
     try {
+      await rosterMonitor.refresh(`prematch-${reason}`);
       const payload = await fetchLiveProvider();
       cache = { ...payload, fetchedAt:Date.now() };
       broadcast('analysis', publicCache());
@@ -380,7 +400,22 @@ const server = http.createServer(async(req,res)=>{
   }
   if (url.pathname === '/api/refresh' && req.method === 'POST') { await refreshData('manual'); return sendJson(res,200,publicCache()); }
   if (url.pathname === '/api/config' && req.method === 'GET') return sendJson(res,200,{ kakaoJsKey:KAKAO_JS_KEY, modelVersion:MODEL_VERSION });
-  if (url.pathname === '/api/health' && req.method === 'GET') return sendJson(res,200,{ok:true,source:cache.source,refreshing:Boolean(refreshPromise),at:isoNow()});
+  if (url.pathname === '/api/health' && req.method === 'GET') {
+    const roster = rosterMonitor.getState();
+    return sendJson(res,200,{ok:true,source:cache.source,refreshing:Boolean(refreshPromise),at:isoNow(),roster:{source:roster.source,fetchedAt:roster.fetchedAt,stale:roster.stale,teams:roster.teams.length}});
+  }
+  if (url.pathname === '/api/roster/teams' && req.method === 'GET') {
+    return sendJson(res,200,rosterMonitor.getState({sport:url.searchParams.get('sport'),league:url.searchParams.get('league'),country:url.searchParams.get('country'),q:url.searchParams.get('q')}));
+  }
+  if (url.pathname === '/api/roster/game-impact' && req.method === 'GET') {
+    const home=url.searchParams.get('home')||'', away=url.searchParams.get('away')||'';
+    if (!home || !away) return sendJson(res,400,{error:'home, away 팀명이 필요합니다.'});
+    return sendJson(res,200,rosterMonitor.gameImpact(home,away,url.searchParams.get('sport')||'',url.searchParams.get('league')||''));
+  }
+  if (url.pathname === '/api/roster/refresh' && req.method === 'POST') {
+    const roster=await rosterMonitor.refresh('manual-main');
+    return sendJson(res,200,{season:roster.season,source:roster.source,fetchedAt:roster.fetchedAt,stale:roster.stale,teams:roster.teams.length,warning:roster.warning});
+  }
   if (url.pathname.startsWith('/api/games/') && req.method === 'GET') {
     const id = decodeURIComponent(url.pathname.slice('/api/games/'.length));
     const game = cache.games.find(g=>String(g.id)===id);
@@ -404,4 +439,4 @@ if (require.main === module) server.listen(PORT,()=>{
   if (LIVE_PROVIDER_URL) refreshData('startup');
 });
 
-module.exports = {server, parseKst, validateRecommendation, normalizeProviderPayload, analyzeGame};
+module.exports = {server, parseKst, validateRecommendation, normalizeProviderPayload, analyzeGame, rosterMonitor};
