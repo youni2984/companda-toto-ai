@@ -97,9 +97,39 @@ function renderTicket(){
 }
 function metric(k,v){return `<div class="metric"><span>${esc(k)}</span><b>${esc(v??'-')}</b></div>`;}
 function form(arr=[]){return `<div class="form">${arr.map(x=>`<i class="${esc(x)}">${esc(x)}</i>`).join('')}</div>`;}
+// Empirical head-to-head frequencies only. Never label these as calibrated win probabilities.
+function historicalMarketBars(g){
+  const rows=Array.isArray(g.h2h?.games)?g.h2h.games:[];
+  const previous=rows.filter(r=>r && Number.isFinite(Number(r.homeScore)) && Number.isFinite(Number(r.awayScore)) &&
+    r.homeScore!==null && r.awayScore!==null && (!r.playedAt || (Number.isFinite(Date.parse(r.playedAt)) && Date.parse(r.playedAt)<Date.parse(g.startAt))));
+  const handicap=g.handicap ?? g.handicapLine ?? (String(g.market||'').includes('핸디')?g.line:null);
+  const totalLine=g.totalLine ?? (String(g.market||'').toUpperCase().includes('U/O')?g.line:null);
+  const groups=[
+    ['승·무·패', ['승','무','패'], r=>{const d=Number(r.homeScore)-Number(r.awayScore);return d>0?'승':d<0?'패':'무';}],
+    ['1승패 (1점차=1무)', ['홈승','1무','홈패'],r=>{const d=Number(r.homeScore)-Number(r.awayScore);return d>1?'홈승':d< -1?'홈패':'1무';}],
+    ['5승패 (5점차=5무)', ['홈승','5무','홈패'],r=>{const d=Number(r.homeScore)-Number(r.awayScore);return d>5?'홈승':d< -5?'홈패':'5무';}],
+    ['SUM 홀짝', ['홀','짝'],r=>(Number(r.homeScore)+Number(r.awayScore))%2?'홀':'짝']
+  ];
+  if(handicap!==null && handicap!==undefined && handicap!=='' && Number.isFinite(Number(handicap)))groups.splice(1,0,['핸디캡 (홈 '+String(handicap)+')',['핸디승','핸디무','핸디패'],r=>{const d=Number(r.homeScore)-Number(r.awayScore)+Number(handicap);return d>0?'핸디승':d<0?'핸디패':'핸디무';}]);
+  if(totalLine!==null && totalLine!==undefined && totalLine!=='' && Number.isFinite(Number(totalLine)))groups.push(['언더·오버 ('+String(totalLine)+')',['언더','오버'],r=>{const d=Number(r.homeScore)+Number(r.awayScore)-Number(totalLine);return d===0?null:d<0?'언더':'오버';}]);
+  const half=previous.filter(r=>r.halfHomeScore!==null && r.halfAwayScore!==null && Number.isFinite(Number(r.halfHomeScore)) && Number.isFinite(Number(r.halfAwayScore)));
+  if(half.length) {
+    groups.push(['전반전 승·무·패',['승','무','패'],r=>{const d=Number(r.halfHomeScore)-Number(r.halfAwayScore);return d>0?'승':d<0?'패':'무';},half]);
+    groups.push(['전반전 SUM 홀짝',['홀','짝'],r=>(Number(r.halfHomeScore)+Number(r.halfAwayScore))%2?'홀':'짝',half]);
+  }
+  const bars=groups.map(([name,labels,pick,source])=>{
+    const valid=(source||previous).map(pick).filter(x=>x!==null);
+    if(!valid.length)return '<section><h4>'+esc(name)+'</h4><p>실제 맞대결 점수 기록 미수신 · 산출 보류</p></section>';
+    return '<section><h4>'+esc(name)+' · '+valid.length+'경기</h4>'+labels.map(label=>{
+      const count=valid.filter(x=>x===label).length,percent=(count/valid.length*100).toFixed(1);
+      return '<div style="margin:8px 0"><div>'+esc(label)+' '+percent+'% ('+count+'/'+valid.length+')</div><div style="background:#dce5ee;border-radius:8px;height:12px;overflow:hidden"><div style="height:100%;width:'+percent+'%;background:#1375b8"></div></div></div>';
+    }).join('')+'</section>';
+  }).join('');
+  return '<section class="reason-box"><h3>시장별 과거 맞대결 비중 그래프</h3><p>실제 수신된 동일 대진의 과거 점수 빈도입니다. 미래 적중확률이 아닙니다. 미수신 유형은 보류합니다.</p>'+bars+'</section>';
+}
 function openDetail(id){
   const g=findGame(id);if(!g)return;const p=g.prediction||{},s=g.season||{},h=g.h2h;
-  $('#detailBody').innerHTML=`<div class="detail-kicker">${esc(shortSport[normSport(g.sport)]||g.sport)} · ${esc(g.league||'')} · ${esc(g.market||'')}</div><h2>${esc(g.home)} <span>vs</span> ${esc(g.away)}</h2><p class="detail-time">${esc(fmtTime(g.startAt))}${g.line!=null?` · 기준점 ${esc(g.line)}`:''}</p><div class="hero-pick"><div><small>통계 기반 보조 분석</small><strong>${esc(g.validation?.eligible?p.pickLabel||pickText(p.pick):g.validation?.reason||'보류')}</strong><em>비교용 보조지수 · 적중확률 아님</em></div><div class="hero-score">${g.validation?.eligible?esc(p.score??'-'):'-'}<small>/100</small>${g.validation?.eligible?gradeBadge(p.grade):'보류'}</div></div><div class="detail-grid"><section><h3>시즌 · 홈 기준</h3>${metric('홈 승률',s.home?.winRate!=null?`${s.home.winRate}%`:'-')}${metric('원정 승률',s.away?.winRate!=null?`${s.away.winRate}%`:'-')}</section><section><h3>최근 동일표본</h3>${metric(g.home,'')}${form(g.recent?.home||[])}${metric(g.away,'')}${form(g.recent?.away||[])}</section><section><h3>맞대결 / 대체분석</h3>${h?`${metric('표본',`${h.sample}경기`)}${metric(g.home,`${h.homeWins}승`)}${metric(g.away,`${h.awayWins}승`)}`:metric('분석','맞대결 부족 → 최근 동일표본 대체')}</section><section><h3>현재 상태</h3>${metric('추천상태',g.validation?.reason||'-')}${metric('현재 배당',g.validation?.odds??'수신 대기')}${metric('자료상태',g.validation?.dataCompleteness||'-')}</section></div><section class="reason-box"><h3>예측 근거</h3><ul>${(g.analysisNotes||p.notes||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section><div class="detail-actions"><button data-add-detail="${esc(g.id)}">이 픽을 티켓에 ${state.ticket.some(x=>String(x.id)===String(g.id))?'제거':'추가'}</button></div>`;
+  $('#detailBody').innerHTML=`<div class="detail-kicker">${esc(shortSport[normSport(g.sport)]||g.sport)} · ${esc(g.league||'')} · ${esc(g.market||'')}</div><h2>${esc(g.home)} <span>vs</span> ${esc(g.away)}</h2><p class="detail-time">${esc(fmtTime(g.startAt))}${g.line!=null?` · 기준점 ${esc(g.line)}`:''}</p><div class="hero-pick"><div><small>통계 기반 보조 분석</small><strong>${esc(g.validation?.eligible?p.pickLabel||pickText(p.pick):g.validation?.reason||'보류')}</strong><em>비교용 보조지수 · 적중확률 아님</em></div><div class="hero-score">${g.validation?.eligible?esc(p.score??'-'):'-'}<small>/100</small>${g.validation?.eligible?gradeBadge(p.grade):'보류'}</div></div><div class="detail-grid"><section><h3>시즌 · 홈 기준</h3>${metric('홈 승률',s.home?.winRate!=null?`${s.home.winRate}%`:'-')}${metric('원정 승률',s.away?.winRate!=null?`${s.away.winRate}%`:'-')}</section><section><h3>최근 동일표본</h3>${metric(g.home,'')}${form(g.recent?.home||[])}${metric(g.away,'')}${form(g.recent?.away||[])}</section><section><h3>맞대결 / 대체분석</h3>${h?`${metric('표본',`${h.sample}경기`)}${metric(g.home,`${h.homeWins}승`)}${metric(g.away,`${h.awayWins}승`)}`:metric('분석','맞대결 부족 → 최근 동일표본 대체')}</section><section><h3>현재 상태</h3>${metric('추천상태',g.validation?.reason||'-')}${metric('현재 배당',g.validation?.odds??'수신 대기')}${metric('자료상태',g.validation?.dataCompleteness||'-')}</section></div>${historicalMarketBars(g)}<section class="reason-box"><h3>예측 근거</h3><ul>${(g.analysisNotes||p.notes||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section><div class="detail-actions"><button data-add-detail="${esc(g.id)}">이 픽을 티켓에 ${state.ticket.some(x=>String(x.id)===String(g.id))?'제거':'추가'}</button></div>`;
   $('[data-add-detail]').onclick=()=>{toggleTicket(id);openDetail(id)};$('#drawer').classList.add('open');$('#drawer').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
 }
 function closeDetail(){$('#drawer').classList.remove('open');$('#drawer').setAttribute('aria-hidden','true');document.body.style.overflow='';}
