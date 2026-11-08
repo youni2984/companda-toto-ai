@@ -95,7 +95,9 @@ function postRefresh(reason='roster-update') {
         let formation = null;
         try {
           const payload = JSON.parse(body || '{}');
-          if (Array.isArray(payload.games)) {
+          // Only update formation records from a fresh, successful live feed.
+          // A failed provider refresh may return the last cached games with HTTP 200.
+          if (res.statusCode === 200 && payload.source !== 'DEMO' && payload.stale === false && !payload.warning?.startsWith('실시간 연동 실패') && Array.isArray(payload.games)) {
             formation = await formationMonitor.refreshGames(payload.games, reason);
           }
         } catch (err) {
