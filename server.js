@@ -166,7 +166,8 @@ function demoPayload(){return {source:'DEMO',warning:'실시간 공급 API를 �
 function normalizeProviderPayload(raw){
   if(!raw||typeof raw!=='object') throw new Error('공급 API 응답이 JSON 객체가 아닙니다.');
   mergeProviderLedger(raw);
-  const rows=Array.isArray(raw.games)?raw.games:Array.isArray(raw.rows)?raw.rows:[];
+  if(!Array.isArray(raw.games) && !Array.isArray(raw.rows)) throw new Error('공급 API 응답에 games 또는 rows 배열이 없습니다.');
+  const rows=Array.isArray(raw.games)?raw.games:raw.rows;
   const games=rows.map((g,i)=>{
     const game={
       id:String(g.id??`${g.number??'x'}-${i}`),number:g.number??null,sport:normalizeSport(g.sport??g.sportType??g.eventNo),league:g.league??g.competition??'',
