@@ -23,6 +23,8 @@ const sseClients = new Set();
 let refreshPromise = null;
 let cache = { fetchedAt:0, source:'DEMO', warning:'', meta:{}, games:[] };
 let forecastLedger = {};
+let resultLedger = {};
+let historyAudit = { received:0, incomplete:0, parseErrors:[], lastCheckedAt:null };
 
 function parseKst(value) {
   if (!value) return '';
@@ -129,33 +131,74 @@ function validateRecommendation(g,context,now=Date.now()){
   if(bt?.status==='insufficient'||(stat&&stat.count<5)) return no('표본부족');
   return {eligible:true,reason:'추천',status:'추천',odds:pickOdds(g,p),sample:stat?.count||recent,hits:stat?.hits??null,dataCompleteness:g.evidence?.complete===true?'complete':'partial',officialSaleVerified:g.sale?.officialVerified===true};
 }
-function upsertProvided(g,validation){
-  if(!validation?.eligible||!g.prediction?.pick) return;
-  const key=ledgerKey(g),old=forecastLedger[key]||{};
-  forecastLedger[key]={
-    ...old,key,provided:true,providedAt:old.providedAt||isoNow(),lastSeenAt:isoNow(),
-    year:g.year,turn:g.round,gameNumber:g.number,sport:g.sport,league:g.league,home:g.home,away:g.away,startAt:g.startAt,
-    market:marketText(g),line:g.line??null,pick:g.prediction.pick,pickLabel:g.prediction.pickLabel||g.prediction.pick,
-    odds:pickOdds(g,g.prediction.pick),state:old.state||'판정대기'
+function validPrematch(row) {
+  const saved = Date.parse(row.providedAt || row.savedAt || '');
+  const start = Date.parse(parseKst(row.startAt || ''));
+  return row.provided === true && Number.isFinite(saved) && Number.isFinite(start) && saved < start &&
+    row.origin !== 'posthoc' && row.origin !== 'backfill' && row.provenance === 'prematch';
+}
+function upsertProvided(g, validation) {
+  if (!validation?.eligible || !g.prediction?.pick || cache.source === 'DEMO') return;
+  const key = ledgerKey(g);
+  if (forecastLedger[key]) return; // 최초 경기 전 예측은 불변
+  const now = isoNow(), start = Date.parse(parseKst(g.startAt));
+  if (!Number.isFinite(start) || Date.parse(now) >= start) return;
+  forecastLedger[key] = {
+    key, provided:true, providedAt:now, lastSeenAt:now, provenance:'prematch',
+    year:g.year, turn:g.round, gameNumber:g.number, sport:g.sport, league:g.league,
+    home:g.home, away:g.away, startAt:g.startAt, market:marketText(g),
+    line:g.line??null, pick:g.prediction.pick, pickLabel:g.prediction.pickLabel||g.prediction.pick,
+    odds:pickOdds(g,g.prediction.pick), state:'판정대기'
   };
 }
-function mergeProviderLedger(raw){
+function mergeProviderLedger(raw) {
   const rows=raw?.forecastLedger?.rows || raw?.ledger?.rows || raw?.providedPicks || [];
   if(!Array.isArray(rows)) return;
-  for(const row of rows){
-    const key=row.key || [row.year??'',row.turn??row.round??'',row.gameNumber??row.number??'',row.market??row.typeName??'',row.line??row.sub??''].join('|');
-    forecastLedger[key]={...forecastLedger[key],...row,key,provided:row.provided!==false};
+  for(const row of rows) {
+    const key=[row.year??'',row.turn??row.round??'',row.gameNumber??row.number??'',row.market??row.typeName??'',row.line??row.sub??''].join('|');
+    if(!row.key && key.includes('||')) continue;
+    const id=row.key||key;
+    if(forecastLedger[id]) continue;
+    const candidate={...row,key:id,provided:row.provided===true};
+    // 공급자가 서명/원본 증빙 없이 제공한 과거 픽은 사전픽으로 승격 금지
+    if (!validPrematch(candidate) || candidate.evidenceVerified !== true) {
+      candidate.provenance='unverified_import';
+      candidate.provided=false;
+      candidate.state='검증제외';
+    }
+    forecastLedger[id]=candidate;
   }
 }
-function mergeResults(games){
-  for(const g of games){
-    const row=forecastLedger[ledgerKey(g)]; if(!row?.provided) continue;
-    const result=g.officialResultPick??g.resultPick??g.outcomePick??null;
+function mergeResults(games) {
+  for(const g of games) {
+    const key=ledgerKey(g), result=g.officialResultPick??g.resultPick??g.outcomePick??null;
     const status=String(g.status||'').toLowerCase();
-    if(['취소','무효','cancelled','void'].includes(status)){row.state='무효';continue;}
-    if(result){row.resultPick=result;row.state=String(result).toUpperCase()===String(row.pick).toUpperCase()?'적중':'미적중';row.gradedAt=isoNow();}
-    else if(!['적중','미적중','무효'].includes(row.state)) row.state='판정대기';
+    const terminal=['finished','final','ended','completed','종료','확정'].includes(status);
+    const voided=['취소','무효','cancelled','void'].includes(status);
+    if(!terminal && !voided) continue;
+    if(!voided && !result) continue;
+    resultLedger[key]={key,year:g.year,turn:g.round,gameNumber:g.number,
+      market:marketText(g),line:g.line??null,status:voided?'무효':'확정',
+      resultPick:voided?null:result,checkedAt:isoNow()};
+    const row=forecastLedger[key];
+    if(!row || !validPrematch(row)) continue;
+    row.state=voided?'무효':String(result).toUpperCase()===String(row.pick).toUpperCase()?'적중':'미적중';
+    row.resultPick=voided?null:result;
+    row.gradedAt=isoNow();
   }
+}
+function auditHistoryPayload(raw, games) {
+  const rows=Array.isArray(raw.games)?raw.games:Array.isArray(raw.rows)?raw.rows:[];
+  const errors=[];
+  for(let i=0;i<rows.length;i++) {
+    const r=rows[i], missing=[];
+    if(r.number==null) missing.push('number');
+    if(!(r.market??r.typeName??r.type)) missing.push('market');
+    if(!(r.startAt??r.startDate??r.kickoff)) missing.push('startAt');
+    if(missing.length) errors.push({index:i,number:r.number??null,missing,reason:'원본 상품 파싱 누락'});
+  }
+  historyAudit={received:rows.length,incomplete:errors.length,parseErrors:errors.slice(0,100),
+    lastCheckedAt:isoNow(),complete:errors.length===0,scope:'현재 공급 API 응답만 검사'};
 }
 function ledgerSummary(year,turn){
   const rows=Object.values(forecastLedger).filter(x=>(year==null||String(x.year)===String(year))&&(turn==null||String(x.turn)===String(turn)));
@@ -180,6 +223,7 @@ function normalizeProviderPayload(raw){
     game.analysisNotes=g.analysisNotes??g.reasons??game.prediction.notes??[];
     return game;
   }).filter(g=>ALLOWED_SPORTS.has(g.sport));
+  auditHistoryPayload(raw,games);
   return {source:raw.source||raw.meta?.provider||'LIVE_API',warning:raw.warning||'',meta:{...(raw.meta||{}),year:raw.year??raw.meta?.year??null,round:raw.turn??raw.meta?.round??null,provider:raw.meta?.provider||raw.source||'LIVE_API',totalGames:games.length,analyzedGames:games.length,refreshMinutes:Math.round(CACHE_TTL_MS/60000),preparedAt:isoNow(),model:{version:MODEL_VERSION}},games};
 }
 async function fetchLiveProvider(){
@@ -220,6 +264,8 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/refresh'&&req.method==='POST'){await refreshData('manual');return sendJson(res,200,publicCache());}
   if(url.pathname==='/api/config'&&req.method==='GET')return sendJson(res,200,{kakaoJsKey:KAKAO_JS_KEY,modelVersion:MODEL_VERSION,sports:[...ALLOWED_SPORTS]});
   if(url.pathname==='/api/health'&&req.method==='GET'){const r=rosterMonitor.getState();return sendJson(res,200,{ok:true,source:cache.source,refreshing:Boolean(refreshPromise),at:isoNow(),ledger:ledgerSummary(cache.meta?.year,cache.meta?.round),roster:{source:r.source,fetchedAt:r.fetchedAt,stale:r.stale,teams:r.teams.length}});}
+  if(url.pathname==='/api/history-audit'&&req.method==='GET')return sendJson(res,200,historyAudit);
+  if(url.pathname==='/api/results'&&req.method==='GET')return sendJson(res,200,{rows:Object.values(resultLedger)});
   if(url.pathname==='/api/ledger'&&req.method==='GET'){const year=url.searchParams.get('year'),turn=url.searchParams.get('turn');const rows=Object.values(forecastLedger).filter(x=>(!year||String(x.year)===year)&&(!turn||String(x.turn)===turn));return sendJson(res,200,{summary:ledgerSummary(year,turn),rows});}
   if(url.pathname==='/api/roster/teams'&&req.method==='GET')return sendJson(res,200,rosterMonitor.getState({sport:url.searchParams.get('sport'),league:url.searchParams.get('league'),country:url.searchParams.get('country'),q:url.searchParams.get('q')}));
   if(url.pathname==='/api/roster/game-impact'&&req.method==='GET'){const home=url.searchParams.get('home')||'',away=url.searchParams.get('away')||'';if(!home||!away)return sendJson(res,400,{error:'home, away 팀명이 필요합니다.'});return sendJson(res,200,rosterMonitor.gameImpact(home,away,url.searchParams.get('sport')||'',url.searchParams.get('league')||''));}
