@@ -14,6 +14,11 @@ return {async fetch(request){
  if(route==='/api/refresh' && request.method!=='POST')return json({error:'POST required'},405);
  if(route==='/api/refresh' && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin)return json({error:'Origin mismatch'},403);
 
+if(route==='/api/bootstrap' && request.method==='GET'){
+  await refreshData('user-entry');
+  return json(publicCache());
+}
+
 if(route==='/api/history-audit' && request.method==='GET')
   return json(historyAudit);
 
