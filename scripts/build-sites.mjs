@@ -17,7 +17,8 @@ return {async fetch(request){
 if(route==='/api/bootstrap' && request.method==='GET'){
   await refreshData('user-entry');
   return json(publicCache());
-}
+  }
+
 if(route==='/api/history-audit' && request.method==='GET')
   return json(historyAudit);
 
