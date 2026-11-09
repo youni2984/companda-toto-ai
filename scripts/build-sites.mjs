@@ -13,13 +13,13 @@ return {async fetch(request){
  if(route==='/api/stream')return new Response('event: hello\\ndata: {}\\n\\n',{headers:{'Content-Type':'text/event-stream','Cache-Control':'no-store'}});
  if(route==='/api/refresh' && request.method!=='POST')return json({error:'POST required'},405);
  if(route==='/api/refresh' && request.headers.get('Origin') && request.headers.get('Origin')!==url.origin)return json({error:'Origin mismatch'},403);
- 
+
 if(route==='/api/history-audit' && request.method==='GET')
   return json(historyAudit);
 
 if(route==='/api/results' && request.method==='GET')
   return json({rows:Object.values(resultLedger)});
-
+ 
  const asset=ASSETS[route==='/'?'/index.html':route];
  if(asset!==undefined && request.method==='GET')return new Response(asset,{headers:{'Content-Type':route.endsWith('.js')?'application/javascript; charset=utf-8':route.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
  return json({error:'Not Found'},404);
