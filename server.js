@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const { createRosterMonitor } = require('./lib/roster-monitor');
+const { auditPick } = require('./lib/intelligent-pick-audit');
 
 const rosterMonitor = createRosterMonitor();
 rosterMonitor.start();
@@ -205,6 +206,73 @@ function ledgerSummary(year,turn){
   const hits=rows.filter(x=>x.provided&&x.state==='적중').length,misses=rows.filter(x=>x.provided&&x.state==='미적중').length,pending=rows.filter(x=>x.provided&&x.state==='판정대기').length,voids=rows.filter(x=>x.provided&&x.state==='무효').length;
   return {games:new Set(rows.map(x=>`${x.year}|${x.turn}|${x.gameNumber}`)).size,provided:rows.filter(x=>x.provided).length,hits,misses,pending,voids,unprovided:0,hitRate:hits+misses?hits/(hits+misses):null};
 }
+// Read-only, shadow-mode audit: existing picks and ticket creation are never overwritten.
+function intelligenceAudit(){
+  const observedAt=isoNow();
+  const rows=cache.games.map(g=>{
+    const p=g.prediction?.pick;
+    const sourceEvidence=g.evidence||{};
+    const market=marketText(g);
+    const pickOddsValue=pickOdds(g,p);
+    const currentTime=Date.now();
+    const saleOpenAt=Date.parse(parseKst(g.sale?.open));
+    const saleDeadline=Date.parse(parseKst(g.sale?.deadline));
+    const startAt=Date.parse(parseKst(g.startAt));
+    const row={
+      year:g.year,turn:g.round,number:Number(g.number),eventId:g.eventId,
+      sport:g.sport,market,line:g.line,pick:p,odds:pickOddsValue,
+      started:!Number.isFinite(startAt)||startAt<=currentTime,
+      cancelled:['취소','무효','cancelled','void'].includes(String(g.status||'').toLowerCase()),
+      sale:{
+        available:g.sale?.available===true,
+        officialVerified:g.sale?.officialVerified===true,
+        open:(!Number.isFinite(saleOpenAt)||saleOpenAt<=currentTime)&&(!Number.isFinite(saleDeadline)||currentTime<saleDeadline)
+      },
+      evidence:{
+        sourceVerified:sourceEvidence.sourceVerified===true,
+        observedBeforeStart:sourceEvidence.observedBeforeStart===true,
+        recentSample:[g.recent?.home?.length||0,g.recent?.away?.length||0],
+        headToHeadSample:Number(g.h2h?.sample||0),
+        marketVerified:sourceEvidence.marketVerified===true,
+        parityVerified:sourceEvidence.parityVerified===true,
+        historyBridgeError:sourceEvidence.historyBridgeError===true,
+        rawParsingErrors:Number(sourceEvidence.rawParsingErrors||0),
+        unitMismatch:sourceEvidence.unitMismatch===true,
+        contradictory:sourceEvidence.contradictory===true,
+        borderline:sourceEvidence.borderline===true,
+        expectedTotal:Number.isFinite(Number(sourceEvidence.expectedTotal))?Number(sourceEvidence.expectedTotal):null,
+        rawExpectedMargin:Number.isFinite(Number(sourceEvidence.rawExpectedMargin))?Number(sourceEvidence.rawExpectedMargin):null,
+        domesticSeasonEarly:sourceEvidence.domesticSeasonEarly===true
+      }
+    };
+    const result=auditPick(row);
+    return {number:g.number,league:g.league,home:g.home,away:g.away,market,
+      pick:p,expectedByCurrentServer:g.prediction?.pickLabel,eligible:result.eligible,
+      reasons:result.reasons,eventKey:result.eventKey,mode:'shadow_only'};
+  });
+  const reasonCounts={};
+  for(const row of rows)for(const reason of row.reasons)reasonCounts[reason]=(reasonCounts[reason]||0)+1;
+  return {mode:'shadow_only',year:cache.meta.year,turn:cache.meta.round,
+    fetchedAt:cache.fetchedAt?new Date(cache.fetchedAt).toISOString():null,
+    observedAt,source:cache.source,existingPicksUnchanged:true,
+    audit:{total:rows.length,eligible:rows.filter(x=>x.eligible).length,rejected:rows.filter(x=>!x.eligible).length,reasonCounts},
+    rows};
+}
+function intelligenceRoundStats(){
+  // Only immutable, timestamp-verified prematch picks may enter the denominator.
+  const groups=new Map();
+  for(const row of Object.values(forecastLedger)){
+    if(!validPrematch(row))continue;
+    const key=[row.year,row.turn,row.sport,row.market].join('|');
+    const stat=groups.get(key)||{year:row.year,turn:row.turn,sport:row.sport,market:row.market,hits:0,misses:0,pending:0,void:0};
+    if(row.state==='적중')stat.hits++;
+    else if(row.state==='미적중')stat.misses++;
+    else if(row.state==='무효')stat.void++;
+    else stat.pending++;
+    groups.set(key,stat);
+  }
+  return {mode:'prematch_verified_only',rows:[...groups.values()].map(r=>({...r,hitRate:r.hits+r.misses?r.hits/(r.hits+r.misses):null}))};
+}
 function demoPayload(){return {source:'DEMO',warning:'실시간 공급 API를 연결해야 실제 경기를 표시합니다.',meta:{year:null,round:null,provider:'DEMO',model:{version:MODEL_VERSION}},games:[]};}
 function normalizeProviderPayload(raw){
   if(!raw||typeof raw!=='object') throw new Error('공급 API 응답이 JSON 객체가 아닙니다.');
@@ -264,6 +332,8 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/refresh'&&req.method==='POST'){await refreshData('manual');return sendJson(res,200,publicCache());}
   if(url.pathname==='/api/config'&&req.method==='GET')return sendJson(res,200,{kakaoJsKey:KAKAO_JS_KEY,modelVersion:MODEL_VERSION,sports:[...ALLOWED_SPORTS]});
   if(url.pathname==='/api/health'&&req.method==='GET'){const r=rosterMonitor.getState();return sendJson(res,200,{ok:true,source:cache.source,refreshing:Boolean(refreshPromise),at:isoNow(),ledger:ledgerSummary(cache.meta?.year,cache.meta?.round),roster:{source:r.source,fetchedAt:r.fetchedAt,stale:r.stale,teams:r.teams.length}});}
+  if(url.pathname==='/api/intelligence/audit'&&req.method==='GET')return sendJson(res,200,intelligenceAudit());
+  if(url.pathname==='/api/intelligence/rounds'&&req.method==='GET')return sendJson(res,200,intelligenceRoundStats());
   if(url.pathname==='/api/history-audit'&&req.method==='GET')return sendJson(res,200,historyAudit);
   if(url.pathname==='/api/results'&&req.method==='GET')return sendJson(res,200,{rows:Object.values(resultLedger)});
   if(url.pathname==='/api/ledger'&&req.method==='GET'){const year=url.searchParams.get('year'),turn=url.searchParams.get('turn');const rows=Object.values(forecastLedger).filter(x=>(!year||String(x.year)===year)&&(!turn||String(x.turn)===turn));return sendJson(res,200,{summary:ledgerSummary(year,turn),rows});}
@@ -277,4 +347,4 @@ const server=http.createServer(async(req,res)=>{
 });
 cache={...demoPayload(),fetchedAt:Date.now()};
 if(require.main===module)server.listen(PORT,()=>{console.log(`COMPANDA TOTO AI: http://localhost:${PORT}`);if(LIVE_PROVIDER_URL)refreshData('startup');});
-module.exports={server,parseKst,validateRecommendation,normalizeProviderPayload,analyzeGame,rosterMonitor,ledgerSummary};
+module.exports={server,parseKst,validateRecommendation,normalizeProviderPayload,analyzeGame,rosterMonitor,ledgerSummary,intelligenceAudit,intelligenceRoundStats};
