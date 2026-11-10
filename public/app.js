@@ -75,18 +75,32 @@ function renderAnalysisFeed(games){
 function renderAll(){renderHeader();renderRows();renderTicket();}
 function setLive(type){$('#liveDot').className=type;$('#liveText').textContent=type==='refreshing'?'갱신 중':type==='error'?'재검증 필요':type==='demo'?'DEMO · 예시':'데이터 연결';}
 function findGame(id){return state.data?.games?.find(g=>String(g.id)===String(id));}
+// One physical match can have several markets; never treat each market number as a different match.
+function eventIdentity(g){
+  if(g.eventId != null && String(g.eventId).trim()) return [g.round,'event',String(g.eventId)].join('|');
+  const home=String(g.home||'').trim().toLowerCase(),away=String(g.away||'').trim().toLowerCase();
+  const started=Date.parse(g.startAt);
+  if(!home||!away||!Number.isFinite(started))return null;
+  return [g.round,normSport(g.sport),home,away,started].join('|');
+}
+function ticketQualified(g){
+  return Boolean(g?.validation?.eligible && Number(g.validation.odds)>1.50 &&
+    eventIdentity(g) && Date.parse(g.startAt)>Date.now() &&
+    g.sale?.officialVerified===true && g.sale?.available===true &&
+    (!Number.isFinite(Date.parse(g.sale?.deadline))||Date.parse(g.sale.deadline)>Date.now()));
+}
 function buildTicket(auto=true){
-  const games=selectedGames().filter(g=>g.validation?.eligible).sort((a,b)=>Date.parse(a.startAt)-Date.parse(b.startAt)||(b.prediction?.score||0)-(a.prediction?.score||0));
-  const unique=[];const seen=new Set();for(const g of games){const k=g.eventId||`${g.round}|${g.number}|${g.home}|${g.away}`;if(seen.has(k))continue;seen.add(k);unique.push(g);}
+  const games=selectedGames().filter(ticketQualified).sort((a,b)=>Date.parse(a.startAt)-Date.parse(b.startAt)||(b.prediction?.score||0)-(a.prediction?.score||0));
+  const unique=[];const seen=new Set();for(const g of games){const k=eventIdentity(g);if(!k||seen.has(k))continue;seen.add(k);unique.push(g);}
   state.ticket=unique.length>=2?unique.slice(0,3).map(g=>({id:g.id})):[];
   renderRows();renderTicket();if(auto)toast(state.ticket.length>=2?'경기 임박순으로 검증 통과 참고 티켓을 구성했습니다.':'추천 없음 · 배당/기준값/검증 자료 수신을 기다립니다.');
 }
 function toggleTicket(id){
-  const g=findGame(id);if(!g?.validation?.eligible)return toast(g?.validation?.reason||'검증된 픽만 선택할 수 있습니다.');
-  if(state.ticket.some(x=>{const xg=findGame(x.id);return xg&&(xg.eventId||`${xg.round}|${xg.number}`)===(g.eventId||`${g.round}|${g.number}`)&&x.id!==id;}))return toast('같은 경기의 중복 시장은 선택할 수 없습니다.');
+  const g=findGame(id);if(!ticketQualified(g))return toast(g?.validation?.reason||'현재 판매·배당·실제 경기 검증에 실패한 픽입니다.');
+  if(state.ticket.some(x=>{const xg=findGame(x.id);return xg&&eventIdentity(xg)===eventIdentity(g)&&String(x.id)!==String(id);}))return toast('같은 경기의 중복 시장은 선택할 수 없습니다.');
   const i=state.ticket.findIndex(x=>String(x.id)===String(id));if(i>=0)state.ticket.splice(i,1);else if(state.ticket.length<10)state.ticket.push({id});else return toast('티켓은 최대 10경기까지 선택할 수 있습니다.');renderRows();renderTicket();
 }
-function ticketGames(){return state.ticket.map(x=>findGame(x.id)).filter(g=>g?.validation?.eligible&&Date.parse(g.startAt)>Date.now()&&(!Number.isFinite(Date.parse(g.sale?.deadline))||Date.parse(g.sale?.deadline)>Date.now()));}
+function ticketGames(){const seen=new Set();return state.ticket.map(x=>findGame(x.id)).filter(g=>{if(!ticketQualified(g))return false;const k=eventIdentity(g);if(seen.has(k))return false;seen.add(k);return true;});}
 function renderTicket(){
   const games=ticketGames();
   $('#ticketSportLabel').textContent=sportNames[state.sport]||'토토';$('#ticketCount').textContent=`${games.length}경기`;$('#mobileTicketCount').textContent=String(games.length);
@@ -104,7 +118,7 @@ function openDetail(id){
 }
 function closeDetail(){$('#drawer').classList.remove('open');$('#drawer').setAttribute('aria-hidden','true');document.body.style.overflow='';}
 function ticketText(){const games=ticketGames();return ['SCORECENTER LIVE · 컴판다 토토 AI사전 분석',`${sportNames[state.sport]||'토토'} · ${state.data.meta?.round||'-'}회차 · ${fmtUpdated(new Date().toISOString())} KST`,...games.map(g=>`${g.number} | ${fmtTime(g.startAt)} | ${g.home} : ${g.away} | ${g.market} ${g.line??''} | ${pickText(g.prediction.pick)} | ${Number(g.validation.odds).toFixed(2)}배`),'통계 기반 참고 분석 · 적중 보장 없음'].join('\n');}
-async function revalidateTicket(){try{const ids=state.ticket.map(g=>g.id);const r=await fetch('/api/refresh',{method:'POST'});if(!r.ok)throw Error('갱신 실패');state.data=await r.json();state.ticket=ids.filter(id=>findGame(id)?.validation?.eligible).map(id=>({id}));renderAll();return ticketGames().length>=2;}catch{toast('재조회 실패 · 공유를 중단했습니다.');return false;}}
+async function revalidateTicket(){try{const ids=state.ticket.map(g=>g.id);const r=await fetch('/api/refresh',{method:'POST'});if(!r.ok)throw Error('갱신 실패');state.data=await r.json();state.ticket=ids.filter(id=>ticketQualified(findGame(id))).map(id=>({id}));renderAll();return ticketGames().length>=2;}catch{toast('재조회 실패 · 공유를 중단했습니다.');return false;}}
 async function copyTicket(){if(!await revalidateTicket())return toast('검증 통과 경기가 부족합니다.');try{await navigator.clipboard.writeText(ticketText());toast('티켓 내용을 복사했습니다.');}catch{toast('복사 권한을 확인해 주세요.');}}
 async function shareKakao(){if(!await revalidateTicket())return toast('검증 통과 경기가 부족합니다.');const text=ticketText(),key=state.config.kakaoJsKey;try{if(window.Kakao&&key){if(!Kakao.isInitialized())Kakao.init(key);Kakao.Share.sendDefault({objectType:'text',text,link:{mobileWebUrl:location.href,webUrl:location.href},buttonTitle:'참고 분석 보기'});return;}if(navigator.share){await navigator.share({title:'컴판다 토토 AI사전 분석',text,url:location.href});return;}await navigator.clipboard.writeText(text);toast('카카오 JS 키가 없어 티켓 내용을 복사했습니다.');}catch(e){if(e?.name!=='AbortError')toast('공유에 실패했습니다. 카카오 키/도메인 설정을 확인하세요.');}}
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),2400);}

@@ -130,6 +130,34 @@ function validateRecommendation(g,context,now=Date.now()){
   if(recent<3) return no('최근 전력 표본 3경기 미만');
   const bt=g.backtest,stat=bt?.picks?.[p];
   if(bt?.status==='insufficient'||(stat&&stat.count<5)) return no('표본부족');
+  // The upgraded rule-aware ticket gate starts with round 134. Earlier immutable picks are preserved.
+  // Missing provenance, sale confirmation, market data or an event identity is a HOLD, never a guessed pick.
+  if(Number(g.round)>=134 && Number(g.year)>=2026){
+    const ev=g.evidence||{}, market=marketText(g);
+    const audit=auditPick({
+      year:Number(g.year),turn:Number(g.round),number:Number(g.number),
+      eventId:g.eventId,sport:g.sport,market,line:g.line,pick:p,
+      odds:pickOdds(g,p),started:start<=now,
+      sale:{available:g.sale?.available===true,officialVerified:g.sale?.officialVerified===true,open:(!Number.isFinite(open)||now>=open)&&(!Number.isFinite(deadline)||now<deadline)},
+      evidence:{
+        sourceVerified:ev.sourceVerified===true,
+        observedBeforeStart:ev.observedBeforeStart===true,
+        recentSample:[g.recent?.home?.length||0,g.recent?.away?.length||0],
+        headToHeadSample:Number(g.h2h?.sample||0),
+        domesticSeasonEarly:ev.domesticSeasonEarly===true,
+        marketVerified:ev.marketVerified===true,
+        parityVerified:ev.parityVerified===true,
+        historyBridgeError:ev.historyBridgeError===true,
+        rawParsingErrors:Number(ev.rawParsingErrors||0),
+        unitMismatch:ev.unitMismatch===true,
+        contradictory:ev.contradictory===true,
+        borderline:ev.borderline===true,
+        expectedTotal:typeof ev.expectedTotal==='number'?ev.expectedTotal:null,
+        rawExpectedMargin:typeof ev.rawExpectedMargin==='number'?ev.rawExpectedMargin:null
+      }
+    });
+    if(!audit.eligible)return no('지능형 검증 보류 · '+audit.reasons.join(' / '));
+  }
   return {eligible:true,reason:'추천',status:'추천',odds:pickOdds(g,p),sample:stat?.count||recent,hits:stat?.hits??null,dataCompleteness:g.evidence?.complete===true?'complete':'partial',officialSaleVerified:g.sale?.officialVerified===true};
 }
 function validPrematch(row) {
