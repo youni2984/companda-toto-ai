@@ -6,6 +6,7 @@ const path = require('path');
 const { URL } = require('url');
 const { createRosterMonitor } = require('./lib/roster-monitor');
 const { auditPick } = require('./lib/intelligent-pick-audit');
+const { predictH2H } = require('./lib/h2h-only');
 
 const rosterMonitor = createRosterMonitor();
 rosterMonitor.start();
@@ -17,7 +18,7 @@ const LIVE_PROVIDER_TOKEN = (process.env.LIVE_PROVIDER_TOKEN || '').trim();
 const KAKAO_JS_KEY = (process.env.KAKAO_JS_KEY || '').trim();
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const ALLOWED_SPORTS = new Set(['soccer','baseball','basketball','volleyball']);
-const MODEL_VERSION = 'COMPANDA-PREMATCH-2.2';
+const MODEL_VERSION = 'COMPANDA-H2H-ONLY-1.0';
 const MODEL_WEIGHTS = { season:0.28, recent:0.28, h2h:0.18, home:0.13, market:0.03, roster:0.10 };
 
 const sseClients = new Set();
@@ -123,11 +124,12 @@ function validateRecommendation(g,context,now=Date.now()){
   if(g.sale?.available===false) return no('판매마감');
   const p=g.prediction?.pick;
   if(!['HOME','DRAW','AWAY','OVER','UNDER'].includes(p)) return no('예상픽 미확인');
+  if(g.h2hOnly?.status !== 'candidate' || g.h2hOnly?.pick !== p) return no('맞대결 전용 검증 보류');
   if(!hasOdds(g,p)) return no('배당 수신 대기');
   const market=marketText(g).toUpperCase();
   if((market.includes('U/O')||market.includes('언더')||market.includes('핸디'))&&(g.line==null||!Number.isFinite(Number(g.line)))) return no('기준값 수신 대기');
   const recent=Math.min(g.recent?.home?.length||0,g.recent?.away?.length||0);
-  if(recent<3) return no('최근 전력 표본 3경기 미만');
+  if(Number(g.h2hOnly?.sample||0)<3) return no('맞대결 표본 3경기 미만');
   const bt=g.backtest,stat=bt?.picks?.[p];
   if(bt?.status==='insufficient'||(stat&&stat.count<5)) return no('표본부족');
   // The upgraded rule-aware ticket gate starts with round 134. Earlier immutable picks are preserved.
@@ -306,6 +308,8 @@ function normalizeProviderPayload(raw){
   if(!raw||typeof raw!=='object') throw new Error('공급 API 응답이 JSON 객체가 아닙니다.');
   mergeProviderLedger(raw);
   const rows=Array.isArray(raw.games)?raw.games:Array.isArray(raw.rows)?raw.rows:[];
+  const archive=raw.history?.rows ?? raw.history?.games ?? [];
+  const historyCoverage=raw.history?.coverage ?? {};
   const games=rows.map((g,i)=>{
     const game={
       id:String(g.id??`${g.number??'x'}-${i}`),number:g.number??null,sport:normalizeSport(g.sport??g.sportType??g.eventNo),league:g.league??g.competition??'',
@@ -315,7 +319,14 @@ function normalizeProviderPayload(raw){
       year:g.year??raw.year??raw.meta?.year??null,round:g.round??raw.turn??raw.meta?.round??null,sale:g.sale??g.rules?.sale??{},evidence:g.evidence??null,backtest:g.backtest??null,
       rosterCheck:g.rosterCheck??null,resultPick:g.resultPick??g.officialResultPick??null,demo:false
     };
-    game.prediction=g.prediction?.pick?{...g.prediction}:analyzeGame(game);
+    game.h2hOnly=predictH2H(game,archive,historyCoverage);
+    game.prediction=game.h2hOnly.pick ? {
+      pick:game.h2hOnly.pick,pickLabel:game.h2hOnly.pick,
+      model:MODEL_VERSION,grade:game.h2hOnly.tier==='main_eligible'?'A':'B',
+      notes:[game.h2hOnly.reason,'맞대결 '+game.h2hOnly.sample+'경기'],
+      score:null,probabilities:null
+    } : {pick:null,pickLabel:'보류',model:MODEL_VERSION,
+      notes:[game.h2hOnly.reason],score:null,probabilities:null};
     game.analysisNotes=g.analysisNotes??g.reasons??game.prediction.notes??[];
     return game;
   }).filter(g=>ALLOWED_SPORTS.has(g.sport));
