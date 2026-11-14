@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 const source=fs.readFileSync('server.js','utf8');
 const intelligence=fs.readFileSync('lib/intelligent-pick-audit.js','utf8').replace(/^module\.exports\s*=.*;\s*$/m,'');
+const h2h=fs.readFileSync('lib/h2h-only.js','utf8').replace(/^module\.exports\s*=.*;\s*$/m,'');
 let core=source.slice(source.indexOf('const PORT ='),source.indexOf('function sendJson('));
 core=core.replaceAll('process.env','env').replace(/const PUBLIC_DIR =[^\n]*\n/,'');
 const assets={};
@@ -34,7 +35,7 @@ if(route==='/api/results' && request.method==='GET')
  return json({error:'Not Found'},404);
 }};
 `;
-const code=`const ASSETS=${JSON.stringify(assets)};\n${intelligence}\nfunction application(env){\n${core}\n${handler}\n}\nexport default {fetch(request,env){return application(env).fetch(request)}};\n`;
+const code=`const ASSETS=${JSON.stringify(assets)};\n${intelligence}\n${h2h}\nfunction application(env){\n${core}\n${handler}\n}\nexport default {fetch(request,env){return application(env).fetch(request)}};\n`;
 fs.mkdirSync('dist/server',{recursive:true});fs.mkdirSync('dist/.openai',{recursive:true});
 fs.writeFileSync('dist/server/index.js',code);
 fs.copyFileSync('.openai/hosting.json','dist/.openai/hosting.json');

@@ -1,0 +1,11 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {predictH2H,historicalH2H}=require('../lib/h2h-only');
+const game={year:2026,round:135,sport:'soccer',league:'A',home:'한국',away:'일본',startAt:'2026-11-14T15:00:00+09:00',market:'승무패'};
+const record=(round,home,away,score,eventId)=>({year:2026,round,sport:'soccer',league:'A',home,away,startAt:`2026-10-${String(round-100).padStart(2,'0')}T10:00:00+09:00`,eventId,officialResult:{confirmed:true,status:'final',regulation:score}});
+const history=[record(121,'한국','일본',[2,0],'a'),record(122,'일본','한국',[1,3],'b'),record(123,'한국','중국',[0,5],'c')];
+test('fails closed without verified full history coverage',()=>{assert.equal(predictH2H(game,history,{}).pick,null)});
+test('excludes other opponents and deduplicates markets',()=>{const rows=historicalH2H(game,[...history,history[0]]);assert.equal(rows.length,2);assert.equal(rows[1].homeGoals,2)});
+test('does not promote 2 head-to-head games',()=>{const p=predictH2H(game,history,{complete:true,fromRound:1,throughRound:134});assert.equal(p.pick,null);assert.equal(p.status,'insufficient_h2h')});
+test('predicts only with 3 confirmed direct encounters',()=>{const p=predictH2H(game,[...history,record(124,'한국','일본',[1,0],'d')],{complete:true,fromRound:1,throughRound:134});assert.equal(p.pick,'HOME');assert.equal(p.tier,'secondary_only')});
